@@ -1,0 +1,45 @@
+{
+  "server": {
+    "port": 8443,
+    "api_key": "your-api-key-here"
+  },
+  "database": {
+    "type": "postgres",
+    "host": "db.example.com",
+    "port": 5432,
+    "username": "readonly_user",
+    "password": "your-password-here",
+    "database": "myapp",
+    "ssl_mode": "require"
+  },
+  "security": {
+    "allowed_tables": [
+      "public.users",
+      "public.orders",
+      "public.products"
+    ],
+    "masking_rules": [
+      {
+        "table": "users",
+        "column": "email",
+        "type": "email"
+      },
+      {
+        "table": "users",
+        "column": "phone",
+        "type": "phone_last4"
+      },
+      {
+        "table": "users",
+        "column": "ssn",
+        "type": "redact"
+      }
+    ],
+    "row_filters": [
+      {
+        "table": "orders",
+        "condition": "status = 'active'"
+      }
+    ]
+  }
+}

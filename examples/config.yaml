@@ -1,0 +1,43 @@
+# MCP Database Server Configuration
+# Environment variables can be referenced with ${VAR_NAME} syntax
+
+server:
+  port: 8443
+  api_key: ${MCP_API_KEY}
+  # Optional TLS configuration
+  # tls:
+  #   cert: /path/to/cert.pem
+  #   key: /path/to/key.pem
+
+database:
+  type: postgres          # postgres, mysql, or clickhouse
+  host: ${DB_HOST}
+  port: 5432
+  username: ${DB_USERNAME}
+  password: ${DB_PASSWORD}
+  database: ${DB_NAME}
+  ssl_mode: require       # disable, require, verify-ca, verify-full
+
+security:
+  # Only these tables are accessible via MCP tools
+  allowed_tables:
+    - public.users
+    - public.orders
+    - public.products
+
+  # Column-level data masking
+  masking_rules:
+    - table: users
+      column: email
+      type: email           # j***@example.com
+    - table: users
+      column: phone
+      type: phone_last4     # ***-***-1234
+    - table: users
+      column: ssn
+      type: redact          # [REDACTED]
+
+  # Row-level access filters (injected as WHERE clauses)
+  row_filters:
+    - table: orders
+      condition: "status = 'active'"
