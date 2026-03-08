@@ -1,0 +1,66 @@
+# MCP Database Server — Multi-Database Configuration
+#
+# Starts one HTTP server per database entry, each on its own port.
+# All entries share the same API key and optional TLS settings.
+#
+# Usage:
+#   db-mcp-server start --config multi-database.yaml
+
+server:
+  api_key: ${MCP_API_KEY}
+  # Optional TLS (shared across all database instances)
+  # tls:
+  #   cert: /path/to/cert.pem
+  #   key: /path/to/key.pem
+
+databases:
+  # ─── PostgreSQL ───────────────────────────────────────────────────────
+  - name: postgres
+    server_port: 8443
+    type: postgres
+    host: ${PG_HOST}
+    port: 5432
+    username: ${PG_USERNAME}
+    password: ${PG_PASSWORD}
+    database: ${PG_DATABASE}
+    ssl_mode: require
+    security:
+      allowed_tables: []          # empty = allow all tables
+      masking_rules:
+        - table: users
+          column: email
+          type: email
+        - table: users
+          column: ssn
+          type: redact
+      row_filters: []
+
+  # ─── MariaDB / MySQL ─────────────────────────────────────────────────
+  - name: mariadb
+    server_port: 8444
+    type: mysql                   # use "mysql" for both MySQL and MariaDB
+    host: ${MARIA_HOST}
+    port: 3306
+    username: ${MARIA_USERNAME}
+    password: ${MARIA_PASSWORD}
+    database: ${MARIA_DATABASE}
+    ssl_mode: require
+    security:
+      allowed_tables: []
+      masking_rules: []
+      row_filters: []
+
+  # ─── ClickHouse ───────────────────────────────────────────────────────
+  - name: clickhouse
+    server_port: 8445
+    type: clickhouse
+    host: ${CH_HOST}
+    port: 8123
+    username: ${CH_USERNAME}
+    password: ${CH_PASSWORD}
+    database: ${CH_DATABASE}
+    ssl_mode: disable
+    security:
+      allowed_tables: []
+      masking_rules: []
+      row_filters: []
