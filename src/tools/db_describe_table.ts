@@ -45,7 +45,7 @@ export async function handleDbDescribeTable(
   serverConfig: ServerConfig,
   input: DbDescribeTableInput,
 ): Promise<TableDescription> {
-  if (!isTableAllowed(input.table, serverConfig.config.allowed_tables)) {
+  if (serverConfig.config.allowed_tables.length > 0 && !isTableAllowed(input.table, serverConfig.config.allowed_tables)) {
     throw new Error(
       `Table '${input.table}' is not in the allowed tables list. Use db_list_tables to see available tables.`,
     );
