@@ -51,9 +51,10 @@ export class ClickHouseDriver implements DatabaseDriver {
       clickhouse_settings: { readonly: '1' },
     });
 
-    const rows = (await result.json()) as unknown as Array<{ name: string; engine: string; total_rows: string }>;
+    const json = await result.json<{ data: Array<{ name: string; engine: string; total_rows: string }> }>();
+    const rows = json.data ?? json;
 
-    return rows.map((row) => ({
+    return (rows as Array<{ name: string; engine: string; total_rows: string }>).map((row) => ({
       schema: dbName,
       name: row.name,
       type: 'table' as const,
@@ -72,7 +73,8 @@ export class ClickHouseDriver implements DatabaseDriver {
       clickhouse_settings: { readonly: '1' },
     });
 
-    const descRows = (await descResult.json()) as unknown as Array<{
+    const descJson = await descResult.json<{ data: Array<{ name: string; type: string; default_type: string; default_expression: string; comment: string }> }>();
+    const descRows = (descJson.data ?? descJson) as Array<{
       name: string;
       type: string;
       default_type: string;
@@ -94,7 +96,8 @@ export class ClickHouseDriver implements DatabaseDriver {
       clickhouse_settings: { readonly: '1' },
     });
 
-    const sampleRowData = (await sampleResult.json()) as unknown as Record<string, unknown>[];
+    const sampleJson = await sampleResult.json<{ data: Record<string, unknown>[] }>();
+    const sampleRowData = (sampleJson.data ?? sampleJson) as Record<string, unknown>[];
 
     return {
       schema,
@@ -111,12 +114,14 @@ export class ClickHouseDriver implements DatabaseDriver {
       clickhouse_settings: { readonly: '1' },
     });
 
-    const rows = (await result.json()) as unknown as Record<string, unknown>[];
+    const json = await result.json<{ meta: Array<{ name: string }>; data: Record<string, unknown>[] }>();
+    const rows = (json.data ?? json) as Record<string, unknown>[];
+    const columns = json.meta ? json.meta.map((m) => m.name) : (rows.length > 0 ? Object.keys(rows[0]) : []);
 
     return {
-      columns: rows.length > 0 ? Object.keys(rows[0]) : [],
-      rows,
-      row_count: rows.length,
+      columns,
+      rows: Array.isArray(rows) ? rows : [],
+      row_count: Array.isArray(rows) ? rows.length : 0,
     };
   }
 
