@@ -16,14 +16,28 @@ interface DbDescribeTableInput {
 /**
  * Parse a table reference into schema and table name.
  * "public.orders" → { schema: "public", table: "orders" }
- * "orders" → { schema: "public", table: "orders" }
+ * "orders" → { schema: defaultSchema, table: "orders" }
+ *
+ * Default schema is "public" for PostgreSQL, the database name for MySQL/ClickHouse.
  */
-function parseTableRef(tableRef: string): { schema: string; table: string } {
+function parseTableRef(tableRef: string, defaultSchema: string): { schema: string; table: string } {
   const parts = tableRef.split('.');
   if (parts.length === 2) {
     return { schema: parts[0], table: parts[1] };
   }
-  return { schema: 'public', table: parts[0] };
+  return { schema: defaultSchema, table: parts[0] };
+}
+
+/**
+ * Get the default schema for a database type.
+ * PostgreSQL uses "public", MySQL/ClickHouse use the database name.
+ */
+function getDefaultSchema(serverConfig: ServerConfig): string {
+  const dbType = serverConfig.config.db_type;
+  if (dbType === 'postgres' || dbType === 'postgresql') {
+    return 'public';
+  }
+  return serverConfig.credentials.database;
 }
 
 /**
@@ -51,7 +65,8 @@ export async function handleDbDescribeTable(
     );
   }
 
-  const { schema, table } = parseTableRef(input.table);
+  const defaultSchema = getDefaultSchema(serverConfig);
+  const { schema, table } = parseTableRef(input.table, defaultSchema);
   const sampleRows = Math.min(
     input.sample_rows ?? DEFAULT_SAMPLE_ROWS,
     MAX_SAMPLE_ROWS,
