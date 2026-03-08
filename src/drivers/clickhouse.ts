@@ -51,10 +51,10 @@ export class ClickHouseDriver implements DatabaseDriver {
       clickhouse_settings: { readonly: '1' },
     });
 
-    const json = await result.json<{ data: Array<{ name: string; engine: string; total_rows: string }> }>();
-    const rows = json.data ?? json;
+    const json = (await result.json()) as unknown as { data?: Array<{ name: string; engine: string; total_rows: string }> };
+    const rows = (json.data ?? json) as unknown as Array<{ name: string; engine: string; total_rows: string }>;
 
-    return (rows as Array<{ name: string; engine: string; total_rows: string }>).map((row) => ({
+    return rows.map((row) => ({
       schema: dbName,
       name: row.name,
       type: 'table' as const,
@@ -73,8 +73,8 @@ export class ClickHouseDriver implements DatabaseDriver {
       clickhouse_settings: { readonly: '1' },
     });
 
-    const descJson = await descResult.json<{ data: Array<{ name: string; type: string; default_type: string; default_expression: string; comment: string }> }>();
-    const descRows = (descJson.data ?? descJson) as Array<{
+    const descJson = (await descResult.json()) as unknown as { data?: Array<{ name: string; type: string; default_type: string; default_expression: string; comment: string }> };
+    const descRows = (descJson.data ?? descJson) as unknown as Array<{
       name: string;
       type: string;
       default_type: string;
@@ -96,8 +96,8 @@ export class ClickHouseDriver implements DatabaseDriver {
       clickhouse_settings: { readonly: '1' },
     });
 
-    const sampleJson = await sampleResult.json<{ data: Record<string, unknown>[] }>();
-    const sampleRowData = (sampleJson.data ?? sampleJson) as Record<string, unknown>[];
+    const sampleJson = (await sampleResult.json()) as unknown as { data?: Record<string, unknown>[] };
+    const sampleRowData = (sampleJson.data ?? sampleJson) as unknown as Record<string, unknown>[];
 
     return {
       schema,
@@ -114,8 +114,8 @@ export class ClickHouseDriver implements DatabaseDriver {
       clickhouse_settings: { readonly: '1' },
     });
 
-    const json = await result.json<{ meta: Array<{ name: string }>; data: Record<string, unknown>[] }>();
-    const rows = (json.data ?? json) as Record<string, unknown>[];
+    const json = (await result.json()) as unknown as { meta?: Array<{ name: string }>; data?: Record<string, unknown>[] };
+    const rows = (json.data ?? json) as unknown as Record<string, unknown>[];
     const columns = json.meta ? json.meta.map((m) => m.name) : (rows.length > 0 ? Object.keys(rows[0]) : []);
 
     return {
