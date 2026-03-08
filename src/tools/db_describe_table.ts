@@ -20,7 +20,7 @@ interface DbDescribeTableInput {
  *
  * Default schema is "public" for PostgreSQL, the database name for MySQL/ClickHouse.
  */
-function parseTableRef(tableRef: string, defaultSchema: string): { schema: string; table: string } {
+function parseTableRef(tableRef: string, defaultSchema = 'public'): { schema: string; table: string } {
   const parts = tableRef.split('.');
   if (parts.length === 2) {
     return { schema: parts[0], table: parts[1] };
