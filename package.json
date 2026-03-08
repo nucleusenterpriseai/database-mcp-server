@@ -62,5 +62,8 @@
     "type": "git",
     "url": "https://github.com/nucleusenterpriseai/database-mcp-server.git"
   },
-  "homepage": "https://github.com/nucleusenterpriseai/database-mcp-server#readme"
+  "homepage": "https://github.com/nucleusenterpriseai/database-mcp-server#readme",
+  "publishConfig": {
+    "registry": "https://nucleusenterprise-490004634200.d.codeartifact.ap-southeast-1.amazonaws.com/npm/npm-packages/"
+  }
 }
