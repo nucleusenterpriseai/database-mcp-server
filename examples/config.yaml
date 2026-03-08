@@ -1,4 +1,4 @@
-# MCP Database Server Configuration
+# MCP Database Server Configuration (single database)
 # Environment variables can be referenced with ${VAR_NAME} syntax
 
 server:
@@ -19,11 +19,13 @@ database:
   ssl_mode: require       # disable, require, verify-ca, verify-full
 
 security:
-  # Only these tables are accessible via MCP tools
-  allowed_tables:
-    - public.users
-    - public.orders
-    - public.products
+  # Empty array = allow all tables (no restriction).
+  # To restrict access, list specific tables:
+  #   allowed_tables:
+  #     - public.users
+  #     - public.orders
+  #     - public.products
+  allowed_tables: []
 
   # Column-level data masking
   masking_rules:

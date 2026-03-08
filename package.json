@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.1",
+    "@inquirer/prompts": "^7.0.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "js-yaml": "^4.1.1",
     "mysql2": "^3.19.0",
@@ -62,8 +63,5 @@
     "type": "git",
     "url": "https://github.com/nucleusenterpriseai/database-mcp-server.git"
   },
-  "homepage": "https://github.com/nucleusenterpriseai/database-mcp-server#readme",
-  "publishConfig": {
-    "registry": "https://nucleusenterprise-490004634200.d.codeartifact.ap-southeast-1.amazonaws.com/npm/npm-packages/"
-  }
+  "homepage": "https://github.com/nucleusenterpriseai/database-mcp-server#readme"
 }
