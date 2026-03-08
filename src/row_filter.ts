@@ -6,7 +6,8 @@
  * Fail-closed: throws on parse errors rather than returning unfiltered SQL.
  */
 
-import { Parser } from 'node-sql-parser';
+import pkg from 'node-sql-parser';
+const { Parser } = pkg;
 import { mapDialect } from './dialect.js';
 import type { RowFilter } from './types.js';
 

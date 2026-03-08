@@ -5,7 +5,8 @@
  * Enforces row LIMIT on SELECT queries.
  */
 
-import { Parser } from 'node-sql-parser';
+import pkg from 'node-sql-parser';
+const { Parser } = pkg;
 import { mapDialect } from './dialect.js';
 
 export type QuerySafety = 'safe' | 'write' | 'destructive' | { blocked: string };

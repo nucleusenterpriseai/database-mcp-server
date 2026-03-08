@@ -9,7 +9,8 @@ import { classifyQuery, enforceLimit } from './safety.js';
 import { applyMasking } from './masking.js';
 import { applyRowFilters } from './row_filter.js';
 import type { MaskingRule, RowFilter, SchemaCache } from './types.js';
-import { Parser } from 'node-sql-parser';
+import pkg from 'node-sql-parser';
+const { Parser } = pkg;
 import { mapDialect } from './dialect.js';
 
 const ERROR_MESSAGES: Record<string, string> = {
