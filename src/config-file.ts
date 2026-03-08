@@ -66,6 +66,7 @@ interface RawConfig {
     port?: number;
     api_key?: string;
     tls?: { cert?: string; key?: string };
+    allow_private_hosts?: boolean;
   };
   database?: {
     type?: string;
@@ -154,6 +155,7 @@ async function readAndParseRawConfig(filepath: string): Promise<RawConfig> {
 async function validateDatabaseEntry(
   db: RawDatabaseEntry,
   label: string,
+  allowPrivateHosts = false,
 ): Promise<{ credentials: DatabaseCredentials; dbConfig: DatabaseConfig }> {
   if (!db.host) throw new Error(`${label}: host is required`);
   if (!db.port) throw new Error(`${label}: port is required`);
@@ -166,12 +168,14 @@ async function validateDatabaseEntry(
     );
   }
 
-  // SSRF validation on database host
-  const hostCheck = await validateHost(db.host);
-  if (!hostCheck.valid) {
-    throw new Error(
-      `The database host '${db.host}' is not allowed. Private IPs, localhost, and cloud metadata endpoints are blocked.`,
-    );
+  // SSRF validation on database host (skipped for self-hosted with allow_private_hosts)
+  if (!allowPrivateHosts) {
+    const hostCheck = await validateHost(db.host);
+    if (!hostCheck.valid) {
+      throw new Error(
+        `The database host '${db.host}' is not allowed. Private IPs, localhost, and cloud metadata endpoints are blocked. Set server.allow_private_hosts: true for self-hosted deployments.`,
+      );
+    }
   }
 
   const credentials: DatabaseCredentials = {
@@ -225,12 +229,14 @@ export async function loadConfigFromFile(filepath: string): Promise<FileConfig> 
     );
   }
 
-  // SSRF validation on database host
-  const hostCheck = await validateHost(db.host);
-  if (!hostCheck.valid) {
-    throw new Error(
-      `The database host '${db.host}' is not allowed. Private IPs, localhost, and cloud metadata endpoints are blocked.`,
-    );
+  // SSRF validation on database host (skipped for self-hosted with allow_private_hosts)
+  if (!server?.allow_private_hosts) {
+    const hostCheck = await validateHost(db.host);
+    if (!hostCheck.valid) {
+      throw new Error(
+        `The database host '${db.host}' is not allowed. Private IPs, localhost, and cloud metadata endpoints are blocked. Set server.allow_private_hosts: true for self-hosted deployments.`,
+      );
+    }
   }
 
   // Build credentials
@@ -313,7 +319,7 @@ export async function loadAllDatabaseConfigs(filepath: string): Promise<Database
       }
       usedPorts.add(entry.server_port);
 
-      const { credentials, dbConfig } = await validateDatabaseEntry(entry, label);
+      const { credentials, dbConfig } = await validateDatabaseEntry(entry, label, !!server.allow_private_hosts);
 
       results.push({
         name,
@@ -337,6 +343,7 @@ export async function loadAllDatabaseConfigs(filepath: string): Promise<Database
   const { credentials, dbConfig } = await validateDatabaseEntry(
     { ...db, security: raw.security ?? undefined },
     'database',
+    !!server.allow_private_hosts,
   );
 
   return [{
