@@ -62,9 +62,12 @@ async function startServer() {
     for (const dbConfig of dbConfigs) {
       const serverConfig = { credentials: dbConfig.credentials, config: dbConfig.dbConfig };
       const driver = createDriver(serverConfig.credentials);
-      const mcpServer = createMcpServer(driver, serverConfig);
 
-      const serverOpts = { port: dbConfig.port, apiKey: dbConfig.apiKey };
+      const serverOpts = {
+        port: dbConfig.port,
+        apiKey: dbConfig.apiKey,
+        createMcpServer: () => createMcpServer(driver, serverConfig),
+      };
 
       let result;
       if (dbConfig.tls) {
@@ -72,8 +75,6 @@ async function startServer() {
       } else {
         result = createHttpServer(serverOpts);
       }
-
-      mcpServer.connect(result.transport);
 
       const protocol = dbConfig.tls ? 'https' : 'http';
       result.server.listen(dbConfig.port, () => {

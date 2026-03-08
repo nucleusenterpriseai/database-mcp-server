@@ -25,12 +25,9 @@ describe('HTTP Server', () => {
     const result = createHttpServer({
       port: 0,
       apiKey: API_KEY,
+      createMcpServer: () => new McpServer({ name: 'test-db', version: '0.0.1' }),
     });
     server = result.server;
-
-    // Connect a minimal MCP server so initialize works
-    const mcpServer = new McpServer({ name: 'test-db', version: '0.0.1' });
-    mcpServer.connect(result.transport);
 
     await new Promise<void>((resolve) => {
       server.listen(0, '127.0.0.1', () => resolve());
@@ -149,11 +146,9 @@ describe('HTTP Server with TLS', () => {
       port: 0,
       apiKey: API_KEY,
       tls: { cert: certPath, key: keyPath },
+      createMcpServer: () => new McpServer({ name: 'test-db-tls', version: '0.0.1' }),
     });
     tlsServer = result.server as https.Server;
-
-    const mcpServer = new McpServer({ name: 'test-db-tls', version: '0.0.1' });
-    mcpServer.connect(result.transport);
 
     await new Promise<void>((resolve) => {
       tlsServer.listen(0, '127.0.0.1', () => resolve());
