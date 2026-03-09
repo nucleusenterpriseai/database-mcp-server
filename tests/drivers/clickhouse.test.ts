@@ -70,10 +70,10 @@ describe('ClickHouseDriver', () => {
   describe('listTables', () => {
     it('should return tables from system.tables', async () => {
       mockQuery.mockResolvedValueOnce({
-        json: vi.fn().mockResolvedValueOnce([
+        json: vi.fn().mockResolvedValueOnce({ data: [
           { name: 'events', engine: 'MergeTree', total_rows: '150000' },
           { name: 'users', engine: 'MergeTree', total_rows: '5000' },
-        ]),
+        ] }),
       });
 
       const tables = await driver.listTables();
@@ -89,7 +89,7 @@ describe('ClickHouseDriver', () => {
 
     it('should filter by database when schema provided', async () => {
       mockQuery.mockResolvedValueOnce({
-        json: vi.fn().mockResolvedValueOnce([]),
+        json: vi.fn().mockResolvedValueOnce({ data: [] }),
       });
 
       await driver.listTables('other_db');
@@ -106,17 +106,17 @@ describe('ClickHouseDriver', () => {
     it('should return column metadata via DESCRIBE TABLE', async () => {
       // DESCRIBE TABLE query
       mockQuery.mockResolvedValueOnce({
-        json: vi.fn().mockResolvedValueOnce([
+        json: vi.fn().mockResolvedValueOnce({ data: [
           { name: 'id', type: 'UInt64', default_type: '', default_expression: '', comment: '' },
           { name: 'event_name', type: 'String', default_type: '', default_expression: '', comment: '' },
           { name: 'timestamp', type: 'DateTime', default_type: 'DEFAULT', default_expression: 'now()', comment: '' },
-        ]),
+        ] }),
       });
       // Sample rows query
       mockQuery.mockResolvedValueOnce({
-        json: vi.fn().mockResolvedValueOnce([
+        json: vi.fn().mockResolvedValueOnce({ data: [
           { id: '1', event_name: 'click', timestamp: '2026-01-01 00:00:00' },
-        ]),
+        ] }),
       });
 
       const desc = await driver.describeTable('analytics', 'events', 1);
@@ -139,9 +139,9 @@ describe('ClickHouseDriver', () => {
   describe('query', () => {
     it('should execute query with readonly=1 setting', async () => {
       mockQuery.mockResolvedValueOnce({
-        json: vi.fn().mockResolvedValueOnce([
+        json: vi.fn().mockResolvedValueOnce({ data: [
           { id: '1', event_name: 'click' },
-        ]),
+        ] }),
       });
 
       const result = await driver.query('SELECT id, event_name FROM events LIMIT 10');
@@ -157,9 +157,9 @@ describe('ClickHouseDriver', () => {
 
     it('should extract column names from result rows', async () => {
       mockQuery.mockResolvedValueOnce({
-        json: vi.fn().mockResolvedValueOnce([
+        json: vi.fn().mockResolvedValueOnce({ data: [
           { count: '42' },
-        ]),
+        ] }),
       });
 
       const result = await driver.query('SELECT count() as count FROM events');
@@ -170,7 +170,7 @@ describe('ClickHouseDriver', () => {
 
     it('should return empty result for no rows', async () => {
       mockQuery.mockResolvedValueOnce({
-        json: vi.fn().mockResolvedValueOnce([]),
+        json: vi.fn().mockResolvedValueOnce({ data: [] }),
       });
 
       const result = await driver.query('SELECT * FROM events WHERE 1=0');
