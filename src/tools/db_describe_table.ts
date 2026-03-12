@@ -7,6 +7,8 @@
 
 import type { DatabaseDriver, ServerConfig, TableDescription } from '../types.js';
 import { DEFAULT_SAMPLE_ROWS, MAX_SAMPLE_ROWS } from '../config.js';
+import { maskValue } from '../json_masking.js';
+import { applyJsonMasking } from '../json_masking.js';
 
 interface DbDescribeTableInput {
   table: string;
@@ -72,5 +74,41 @@ export async function handleDbDescribeTable(
     MAX_SAMPLE_ROWS,
   );
 
-  return driver.describeTable(schema, table, sampleRows);
+  const description = await driver.describeTable(schema, table, sampleRows);
+
+  // Apply masking to sample rows
+  if (description.sample_rows.length > 0) {
+    // Column masking — apply maskValue to each masked column
+    const { masking_rules } = serverConfig.config;
+    if (masking_rules.length > 0) {
+      const tableRules = masking_rules.filter(
+        (r) => r.table.toLowerCase() === table.toLowerCase(),
+      );
+      if (tableRules.length > 0) {
+        for (const row of description.sample_rows) {
+          for (const rule of tableRules) {
+            if (rule.type === 'none') continue;
+            const key = Object.keys(row).find(
+              (k) => k.toLowerCase() === rule.column.toLowerCase(),
+            );
+            if (key && row[key] != null) {
+              row[key] = maskValue(row[key], rule.type);
+            }
+          }
+        }
+      }
+    }
+
+    // JSON-path masking
+    const jsonRules = serverConfig.config.json_path_masking_rules ?? [];
+    if (jsonRules.length > 0) {
+      description.sample_rows = applyJsonMasking(
+        description.sample_rows,
+        table,
+        jsonRules,
+      );
+    }
+  }
+
+  return description;
 }

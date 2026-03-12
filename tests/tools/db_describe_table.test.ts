@@ -46,6 +46,7 @@ function createServerConfig(overrides: Partial<ServerConfig['config']> = {}): Se
       db_type: 'postgres',
       allowed_tables: ['public.orders', 'public.customers'],
       masking_rules: [],
+      json_path_masking_rules: [],
       row_filters: [],
       ...overrides,
     },
@@ -113,6 +114,123 @@ describe('handleDbDescribeTable', () => {
 
     // Should cap at 10 (MAX_SAMPLE_ROWS)
     expect(driver.describeTable).toHaveBeenCalledWith('public', 'orders', 10);
+  });
+
+  // ─── Sample row masking ──────────────────────────────────────────
+
+  it('should mask sample rows using column masking rules', async () => {
+    const desc: TableDescription = {
+      schema: 'public',
+      table: 'users',
+      columns: [
+        { name: 'id', type: 'integer', nullable: false, default_value: null, is_primary_key: true },
+        { name: 'email', type: 'varchar', nullable: false, default_value: null, is_primary_key: false },
+        { name: 'phone', type: 'varchar', nullable: true, default_value: null, is_primary_key: false },
+        { name: 'password', type: 'varchar', nullable: false, default_value: null, is_primary_key: false },
+      ],
+      constraints: [],
+      sample_rows: [
+        { id: 1, email: 'alice@example.com', phone: '+6591234567', password: '$2b$10$hash123' },
+        { id: 2, email: 'bob@test.com', phone: null, password: '$2b$10$hash456' },
+      ],
+    };
+    const driver = createMockDriver(desc);
+    const config = createServerConfig({
+      allowed_tables: ['public.users'],
+      masking_rules: [
+        { table: 'users', column: 'email', type: 'email' },
+        { table: 'users', column: 'phone', type: 'phone_last4' },
+        { table: 'users', column: 'password', type: 'redact' },
+      ],
+    });
+
+    const result = await handleDbDescribeTable(driver, config, { table: 'public.users' });
+
+    expect(result.sample_rows[0].email).toBe('a***@example.com');
+    expect(result.sample_rows[0].phone).toBe('***-***-4567');
+    expect(result.sample_rows[0].password).toBe('[REDACTED]');
+    expect(result.sample_rows[0].id).toBe(1); // unmasked
+    expect(result.sample_rows[1].email).toBe('b***@test.com');
+  });
+
+  it('should apply JSON-path masking to sample rows', async () => {
+    const desc: TableDescription = {
+      schema: 'public',
+      table: 'profiles',
+      columns: [
+        { name: 'id', type: 'integer', nullable: false, default_value: null, is_primary_key: true },
+        { name: 'data', type: 'text', nullable: true, default_value: null, is_primary_key: false },
+      ],
+      constraints: [],
+      sample_rows: [
+        { id: 1, data: '{"email":"alice@example.com","role":"admin"}' },
+      ],
+    };
+    const driver = createMockDriver(desc);
+    const config = createServerConfig({
+      allowed_tables: ['public.profiles'],
+      json_path_masking_rules: [
+        { table: 'profiles', column: 'data', paths: [{ path: 'email', mask: 'email' }] },
+      ],
+    });
+
+    const result = await handleDbDescribeTable(driver, config, { table: 'public.profiles' });
+
+    const parsed = JSON.parse(result.sample_rows[0].data as string);
+    expect(parsed.email).toBe('a***@example.com');
+    expect(parsed.role).toBe('admin'); // untouched
+  });
+
+  it('should apply both column and JSON-path masking to sample rows', async () => {
+    const desc: TableDescription = {
+      schema: 'public',
+      table: 'users',
+      columns: [
+        { name: 'id', type: 'integer', nullable: false, default_value: null, is_primary_key: true },
+        { name: 'name', type: 'varchar', nullable: false, default_value: null, is_primary_key: false },
+        { name: 'profile', type: 'text', nullable: true, default_value: null, is_primary_key: false },
+      ],
+      constraints: [],
+      sample_rows: [
+        { id: 1, name: 'Alice', profile: '{"phone":"+6591234567"}' },
+      ],
+    };
+    const driver = createMockDriver(desc);
+    const config = createServerConfig({
+      allowed_tables: ['public.users'],
+      masking_rules: [
+        { table: 'users', column: 'name', type: 'name_initial' },
+      ],
+      json_path_masking_rules: [
+        { table: 'users', column: 'profile', paths: [{ path: 'phone', mask: 'phone_last4' }] },
+      ],
+    });
+
+    const result = await handleDbDescribeTable(driver, config, { table: 'public.users' });
+
+    expect(result.sample_rows[0].name).toBe('A***');
+    const parsed = JSON.parse(result.sample_rows[0].profile as string);
+    expect(parsed.phone).toBe('***-***-4567');
+  });
+
+  it('should not mask sample rows when no masking rules configured', async () => {
+    const desc: TableDescription = {
+      schema: 'public',
+      table: 'orders',
+      columns: [
+        { name: 'id', type: 'integer', nullable: false, default_value: null, is_primary_key: true },
+        { name: 'total', type: 'numeric', nullable: true, default_value: '0', is_primary_key: false },
+      ],
+      constraints: [],
+      sample_rows: [{ id: 1, total: 99.99 }],
+    };
+    const driver = createMockDriver(desc);
+    const config = createServerConfig();
+
+    const result = await handleDbDescribeTable(driver, config, { table: 'public.orders' });
+
+    expect(result.sample_rows[0].id).toBe(1);
+    expect(result.sample_rows[0].total).toBe(99.99);
   });
 
   it('should return correct column metadata', async () => {
