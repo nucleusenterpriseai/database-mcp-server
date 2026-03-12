@@ -502,6 +502,82 @@ databases:
     const results = await loadAllDatabaseConfigs(filepath);
     expect(results[0].dbConfig.allowed_tables).toEqual([]);
     expect(results[0].dbConfig.masking_rules).toEqual([]);
+    expect(results[0].dbConfig.json_path_masking_rules).toEqual([]);
     expect(results[0].dbConfig.row_filters).toEqual([]);
+  });
+
+  it('should parse json_path_masking_rules from YAML config', async () => {
+    const yaml = `
+server:
+  port: 8443
+  api_key: "${'a'.repeat(64)}"
+
+database:
+  type: clickhouse
+  host: db.example.com
+  port: 8123
+  username: reader
+  password: secret
+  database: mydb
+
+security:
+  json_path_masking_rules:
+    - table: user_profile
+      column: param_value
+      paths:
+        - path: nric
+          mask: ssn_last4
+        - path: contact.phone
+          mask: phone_last4
+        - path: children[].name
+          mask: name_initial
+  masking_rules:
+    - table: users
+      column: email
+      type: email
+`;
+    const filepath = writeConfig('json-path.yaml', yaml);
+    const result = await loadConfigFromFile(filepath);
+    expect(result.dbConfig.json_path_masking_rules).toHaveLength(1);
+    const rule = result.dbConfig.json_path_masking_rules[0];
+    expect(rule.table).toBe('user_profile');
+    expect(rule.column).toBe('param_value');
+    expect(rule.paths).toHaveLength(3);
+    expect(rule.paths[0]).toEqual({ path: 'nric', mask: 'ssn_last4' });
+    expect(rule.paths[1]).toEqual({ path: 'contact.phone', mask: 'phone_last4' });
+    expect(rule.paths[2]).toEqual({ path: 'children[].name', mask: 'name_initial' });
+    // Regular masking rules still parsed
+    expect(result.dbConfig.masking_rules).toHaveLength(1);
+  });
+
+  it('should parse json_path_masking_rules in multi-database mode', async () => {
+    const yaml = `
+server:
+  api_key: "${'a'.repeat(64)}"
+
+databases:
+  - name: clickhouse-hr
+    server_port: 3100
+    type: clickhouse
+    host: db.example.com
+    port: 8123
+    username: reader
+    password: secret
+    database: hr_db
+    security:
+      json_path_masking_rules:
+        - table: employees
+          column: metadata
+          paths:
+            - path: ssn
+              mask: redact
+            - path: address.street
+              mask: redact
+`;
+    const filepath = writeConfig('multi-db-json-path.yaml', yaml);
+    const results = await loadAllDatabaseConfigs(filepath);
+    expect(results).toHaveLength(1);
+    expect(results[0].dbConfig.json_path_masking_rules).toHaveLength(1);
+    expect(results[0].dbConfig.json_path_masking_rules[0].paths).toHaveLength(2);
   });
 });
