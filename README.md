@@ -1,6 +1,6 @@
 # MCP Database Server
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for querying SQL databases with built-in security guardrails. Connects AI assistants to your databases safely with column masking, row filters, and query restrictions.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for querying SQL databases with built-in security guardrails. Connects AI assistants to your databases safely with column masking, JSON-path masking, row filters, and query restrictions.
 
 ## Supported Databases
 
@@ -12,6 +12,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for qu
 
 - **Three MCP tools**: `db_list_tables`, `db_describe_table`, `db_query`
 - **Column masking**: email, phone, SSN, credit card, name, IP, full redaction
+- **JSON-path masking**: mask PII inside JSON/JSONB columns (nested paths, arrays)
 - **Row filters**: Automatic WHERE clause injection per table
 - **Query safety**: Only SELECT allowed; DDL/DML/multi-statement blocked
 - **Dangerous function blocking**: `pg_read_file`, `dblink`, etc.
@@ -105,6 +106,18 @@ security:
     - table: users
       column: email
       type: email
+  json_path_masking_rules:
+    - table: customers
+      column: details
+      paths:
+        - path: ssn
+          mask: ssn_last4
+        - path: contact.phone
+          mask: phone_last4
+        - path: dependents[].name
+          mask: name_initial
+        - path: home_address
+          mask: redact
   row_filters:
     - table: orders
       condition: "status = 'active'"
@@ -183,6 +196,126 @@ Execute a read-only SQL query. All queries pass through the security pipeline.
 
 **Returns:** `{ columns, rows, row_count }`
 
+## JSON-Path Masking
+
+Mask PII fields inside JSON/JSONB columns without losing the surrounding data. JSON-path masking runs post-query in memory — it works with any database (PostgreSQL JSONB, MySQL JSON, ClickHouse String containing JSON, key-value tables, etc.).
+
+### Path Syntax
+
+| Pattern | Matches | Example |
+|---------|---------|---------|
+| `key` | Top-level field | `email` → `obj.email` |
+| `a.b.c` | Nested field | `contact.phone` → `obj.contact.phone` |
+| `items[].name` | Field in each array element | `dependents[].name` → `obj.dependents[0].name`, `obj.dependents[1].name`, ... |
+| `a[].b[].c` | Nested arrays | `groups[].members[].ssn` → every `ssn` in every `member` in every `group` |
+
+### Supported Mask Types
+
+| Type | Input | Output |
+|------|-------|--------|
+| `email` | `alice@example.com` | `a***@example.com` |
+| `phone_last4` | `+65-9123-4567` | `***-***-4567` |
+| `ssn_last4` | `S1234567A` | `***-**-567A` |
+| `name_initial` | `Alice Johnson` | `A***` |
+| `credit_card` | `4111-1111-1111-1234` | `****-****-****-1234` |
+| `ip_partial` | `192.168.1.100` | `192.xxx.xxx.xxx` |
+| `redact` | `any value` | `[REDACTED]` |
+| `none` | `any value` | (unchanged) |
+
+### Configuration Examples
+
+**Simple — mask fields in a JSON column:**
+
+```yaml
+security:
+  json_path_masking_rules:
+    - table: customers
+      column: profile_data
+      paths:
+        - path: full_name
+          mask: name_initial
+        - path: phone
+          mask: phone_last4
+        - path: national_id
+          mask: ssn_last4
+```
+
+**Nested objects — mask `contact.email` inside a JSON column:**
+
+```yaml
+security:
+  json_path_masking_rules:
+    - table: employees
+      column: metadata
+      paths:
+        - path: personal.email
+          mask: email
+        - path: personal.home_address
+          mask: redact
+        - path: emergency_contact.phone
+          mask: phone_last4
+```
+
+**Arrays — mask each element's field:**
+
+```yaml
+security:
+  json_path_masking_rules:
+    - table: hr_records
+      column: family_info
+      paths:
+        - path: dependents[].name
+          mask: name_initial
+        - path: dependents[].id_number
+          mask: ssn_last4
+```
+
+**Key-value tables (e.g., `param_key`/`param_value` pattern):**
+
+When a table stores JSON blobs in a generic value column with varying schemas per key, JSON-path masking handles it gracefully — paths that don't exist in a particular row's JSON are silently skipped.
+
+```yaml
+security:
+  json_path_masking_rules:
+    - table: settings
+      column: param_value
+      paths:
+        - path: nric
+          mask: ssn_last4
+        - path: phone
+          mask: phone_last4
+        - path: full_name
+          mask: name_initial
+        - path: address
+          mask: redact
+        - path: members[].identity_number
+          mask: ssn_last4
+```
+
+**Combine with column masking and row filters:**
+
+```yaml
+security:
+  # Column-level SQL masking (rewrites queries)
+  masking_rules:
+    - table: customers
+      column: email
+      type: email
+
+  # JSON-path masking (post-query, in-memory)
+  json_path_masking_rules:
+    - table: customers
+      column: profile_json
+      paths:
+        - path: ssn
+          mask: ssn_last4
+
+  # Row filters (injected WHERE clauses)
+  row_filters:
+    - table: customers
+      condition: "is_deleted = 0"
+```
+
 ## Configuration Reference
 
 ### Environment Variables (Stdio Mode)
@@ -225,6 +358,12 @@ Execute a read-only SQL query. All queries pass through the security pipeline.
   "allowed_tables": ["public.users", "public.orders"],
   "masking_rules": [
     { "table": "users", "column": "email", "type": "email" }
+  ],
+  "json_path_masking_rules": [
+    { "table": "users", "column": "profile_json", "paths": [
+      { "path": "phone", "mask": "phone_last4" },
+      { "path": "home_address", "mask": "redact" }
+    ]}
   ],
   "row_filters": [
     { "table": "orders", "condition": "status = 'active'" }

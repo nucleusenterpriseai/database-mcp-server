@@ -91,6 +91,9 @@ export async function loadConfig(): Promise<ServerConfig> {
   if (!Array.isArray(config.masking_rules)) {
     config.masking_rules = [];
   }
+  if (!Array.isArray(config.json_path_masking_rules)) {
+    config.json_path_masking_rules = [];
+  }
   if (!Array.isArray(config.row_filters)) {
     config.row_filters = [];
   }

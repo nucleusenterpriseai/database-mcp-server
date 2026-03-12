@@ -23,6 +23,7 @@ export interface DatabaseConfig {
   display_name?: string;
   allowed_tables: string[];
   masking_rules: MaskingRule[];
+  json_path_masking_rules: JsonPathMaskingRule[];
   row_filters: RowFilter[];
   schema_cache?: SchemaCache;
   schema_cached_at?: string;
@@ -45,6 +46,19 @@ export type MaskingType =
   | 'ip_partial'
   | 'redact'
   | 'none';
+
+/** JSON-path masking rule — masks specific paths within a JSON column */
+export interface JsonPathMaskingRule {
+  table: string;
+  column: string;
+  paths: JsonPathMask[];
+}
+
+/** A single path+mask pair for JSON-path masking */
+export interface JsonPathMask {
+  path: string;
+  mask: MaskingType;
+}
 
 /** Row filter rule */
 export interface RowFilter {

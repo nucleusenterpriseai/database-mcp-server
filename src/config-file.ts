@@ -44,6 +44,12 @@ export interface DatabaseInstanceConfig {
 
 // ─── Raw config shape from YAML/JSON ─────────────────────────────────────────
 
+interface RawJsonPathMaskingRule {
+  table: string;
+  column: string;
+  paths: Array<{ path: string; mask: string }>;
+}
+
 interface RawDatabaseEntry {
   name?: string;
   server_port?: number;
@@ -57,6 +63,7 @@ interface RawDatabaseEntry {
   security?: {
     allowed_tables?: string[];
     masking_rules?: Array<{ table: string; column: string; type: string }>;
+    json_path_masking_rules?: RawJsonPathMaskingRule[];
     row_filters?: Array<{ table: string; condition: string }>;
   };
 }
@@ -81,6 +88,7 @@ interface RawConfig {
   security?: {
     allowed_tables?: string[];
     masking_rules?: Array<{ table: string; column: string; type: string }>;
+    json_path_masking_rules?: RawJsonPathMaskingRule[];
     row_filters?: Array<{ table: string; condition: string }>;
   };
 }
@@ -194,6 +202,7 @@ async function validateDatabaseEntry(
     display_name: db.name,
     allowed_tables: security.allowed_tables ?? [],
     masking_rules: (security.masking_rules ?? []) as DatabaseConfig['masking_rules'],
+    json_path_masking_rules: (security.json_path_masking_rules ?? []) as DatabaseConfig['json_path_masking_rules'],
     row_filters: (security.row_filters ?? []) as DatabaseConfig['row_filters'],
   };
 
@@ -256,6 +265,7 @@ export async function loadConfigFromFile(filepath: string): Promise<FileConfig> 
     db_type: db.type,
     allowed_tables: security.allowed_tables ?? [],
     masking_rules: (security.masking_rules ?? []) as DatabaseConfig['masking_rules'],
+    json_path_masking_rules: (security.json_path_masking_rules ?? []) as DatabaseConfig['json_path_masking_rules'],
     row_filters: (security.row_filters ?? []) as DatabaseConfig['row_filters'],
   };
 
