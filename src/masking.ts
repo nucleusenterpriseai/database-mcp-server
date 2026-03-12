@@ -17,8 +17,8 @@ import type { MaskingRule, MaskingType, SchemaCache } from './types.js';
  */
 function buildMaskExpression(column: string, type: MaskingType, dialect: string): string | null {
   const d = dialect.toLowerCase();
-  // ClickHouse supports substringIndex (MySQL-compatible), not SPLIT_PART
-  const useSubstringIndex = d === 'mysql' || d === 'mariadb' || d === 'clickhouse';
+  const isMySQL = d === 'mysql' || d === 'mariadb';
+  const isClickHouse = d === 'clickhouse';
 
   switch (type) {
     case 'none':
@@ -26,7 +26,11 @@ function buildMaskExpression(column: string, type: MaskingType, dialect: string)
     case 'redact':
       return "'[REDACTED]'";
     case 'email':
-      if (useSubstringIndex) {
+      if (isClickHouse) {
+        // splitByChar works in all ClickHouse versions; arrayElement is 1-indexed
+        return `CONCAT(LEFT(${column},1),'***@',arrayElement(splitByChar('@',${column}),2))`;
+      }
+      if (isMySQL) {
         return `CONCAT(LEFT(${column},1),'***@',SUBSTRING_INDEX(${column},'@',-1))`;
       }
       return `CONCAT(LEFT(${column},1),'***@',SPLIT_PART(${column},'@',2))`;
@@ -39,7 +43,10 @@ function buildMaskExpression(column: string, type: MaskingType, dialect: string)
     case 'name_initial':
       return `CONCAT(LEFT(${column},1),'***')`;
     case 'ip_partial':
-      if (useSubstringIndex) {
+      if (isClickHouse) {
+        return `CONCAT(arrayElement(splitByChar('.',${column}),1),'.xxx.xxx.xxx')`;
+      }
+      if (isMySQL) {
         return `CONCAT(SUBSTRING_INDEX(${column},'.',1),'.xxx.xxx.xxx')`;
       }
       return `CONCAT(SPLIT_PART(${column},'.',1),'.xxx.xxx.xxx')`;
