@@ -27,8 +27,9 @@ function buildMaskExpression(column: string, type: MaskingType, dialect: string)
       return "'[REDACTED]'";
     case 'email':
       if (isClickHouse) {
-        // splitByChar works in all ClickHouse versions; arrayElement is 1-indexed
-        return `CONCAT(LEFT(${column},1),'***@',arrayElement(splitByChar('@',${column}),2))`;
+        // splitByChar requires non-Nullable input; wrap with ifNull for safety
+        const safeCol = `ifNull(${column},'')`;
+        return `CONCAT(LEFT(${safeCol},1),'***@',arrayElement(splitByChar('@',${safeCol}),2))`;
       }
       if (isMySQL) {
         return `CONCAT(LEFT(${column},1),'***@',SUBSTRING_INDEX(${column},'@',-1))`;
@@ -44,7 +45,8 @@ function buildMaskExpression(column: string, type: MaskingType, dialect: string)
       return `CONCAT(LEFT(${column},1),'***')`;
     case 'ip_partial':
       if (isClickHouse) {
-        return `CONCAT(arrayElement(splitByChar('.',${column}),1),'.xxx.xxx.xxx')`;
+        const safeIpCol = `ifNull(${column},'')`;
+        return `CONCAT(arrayElement(splitByChar('.',${safeIpCol}),1),'.xxx.xxx.xxx')`;
       }
       if (isMySQL) {
         return `CONCAT(SUBSTRING_INDEX(${column},'.',1),'.xxx.xxx.xxx')`;
