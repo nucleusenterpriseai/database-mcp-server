@@ -16,7 +16,9 @@ import type { MaskingRule, MaskingType, SchemaCache } from './types.js';
  * Build a masking SQL expression for a given column.
  */
 function buildMaskExpression(column: string, type: MaskingType, dialect: string): string | null {
-  const isMySQL = dialect.toLowerCase() === 'mysql' || dialect.toLowerCase() === 'mariadb';
+  const d = dialect.toLowerCase();
+  // ClickHouse supports substringIndex (MySQL-compatible), not SPLIT_PART
+  const useSubstringIndex = d === 'mysql' || d === 'mariadb' || d === 'clickhouse';
 
   switch (type) {
     case 'none':
@@ -24,7 +26,7 @@ function buildMaskExpression(column: string, type: MaskingType, dialect: string)
     case 'redact':
       return "'[REDACTED]'";
     case 'email':
-      if (isMySQL) {
+      if (useSubstringIndex) {
         return `CONCAT(LEFT(${column},1),'***@',SUBSTRING_INDEX(${column},'@',-1))`;
       }
       return `CONCAT(LEFT(${column},1),'***@',SPLIT_PART(${column},'@',2))`;
@@ -37,7 +39,7 @@ function buildMaskExpression(column: string, type: MaskingType, dialect: string)
     case 'name_initial':
       return `CONCAT(LEFT(${column},1),'***')`;
     case 'ip_partial':
-      if (isMySQL) {
+      if (useSubstringIndex) {
         return `CONCAT(SUBSTRING_INDEX(${column},'.',1),'.xxx.xxx.xxx')`;
       }
       return `CONCAT(SPLIT_PART(${column},'.',1),'.xxx.xxx.xxx')`;
