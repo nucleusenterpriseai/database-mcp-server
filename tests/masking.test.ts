@@ -90,20 +90,22 @@ describe('applyMasking', () => {
   });
 
   // ─── ClickHouse dialect ──────────────────────────────────────────
-  it('email masking uses splitByChar for ClickHouse', () => {
+  it('email masking uses splitByChar with ifNull for ClickHouse', () => {
     const rules: MaskingRule[] = [{ table: 'users', column: 'email', type: 'email' }];
     const result = applyMasking('SELECT email FROM users', 'clickhouse', rules, schemaCache);
     expect(result).toContain('splitByChar');
     expect(result).toContain('arrayElement');
+    expect(result).toContain('ifNull');
     expect(result.toUpperCase()).not.toContain('SPLIT_PART');
     expect(result.toUpperCase()).not.toContain('SUBSTRING_INDEX');
   });
 
-  it('ip_partial masking uses splitByChar for ClickHouse', () => {
+  it('ip_partial masking uses splitByChar with ifNull for ClickHouse', () => {
     const rules: MaskingRule[] = [{ table: 'users', column: 'name', type: 'ip_partial' }];
     const result = applyMasking('SELECT name FROM users', 'clickhouse', rules, schemaCache);
     expect(result).toContain('splitByChar');
     expect(result).toContain('arrayElement');
+    expect(result).toContain('ifNull');
     expect(result.toUpperCase()).not.toContain('SPLIT_PART');
   });
 
