@@ -65,12 +65,13 @@ describe('HTTP Server', () => {
 
   // Health check
 
-  it('GET /health should return 200 without auth', async () => {
+  it('GET /health should return 200 with activeSessions count', async () => {
     const { status, body } = await fetchJson('/health');
     expect(status).toBe(200);
     const parsed = JSON.parse(body);
     expect(parsed.status).toBe('ok');
     expect(parsed.version).toBeDefined();
+    expect(typeof parsed.activeSessions).toBe('number');
   });
 
   // Auth middleware on /mcp
@@ -175,6 +176,71 @@ describe('HTTP Server', () => {
   it('GET /unknown should return 404', async () => {
     const { status } = await fetchJson('/unknown');
     expect(status).toBe(404);
+  });
+});
+
+// ─── Session Limits ─────────────────────────────────────────────────
+
+describe('HTTP Server session limits', () => {
+  let server: http.Server;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const result = createHttpServer({
+      port: 0,
+      apiKey: API_KEY,
+      createMcpServer: () => new McpServer({ name: 'test-db', version: '0.0.1' }),
+      maxSessions: 2,
+      sessionTtlMs: 60_000,
+    });
+    server = result.server;
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, '127.0.0.1', () => resolve());
+    });
+
+    const addr = server.address() as { port: number };
+    baseUrl = `http://127.0.0.1:${addr.port}`;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
+  });
+
+  it('should return 503 when max sessions exceeded', async () => {
+    const init = () =>
+      fetch(`${baseUrl}/mcp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${API_KEY}`,
+          Accept: 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-03-26',
+            capabilities: {},
+            clientInfo: { name: 'test', version: '1.0' },
+          },
+        }),
+      });
+
+    // Fill up max sessions (2)
+    const res1 = await init();
+    expect(res1.status).toBe(200);
+    const res2 = await init();
+    expect(res2.status).toBe(200);
+
+    // Third should be rejected
+    const res3 = await init();
+    expect(res3.status).toBe(503);
+    const body = await res3.json();
+    expect(body.error).toBe('Too many active sessions');
   });
 });
 
