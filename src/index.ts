@@ -31,14 +31,12 @@ async function main() {
     const fileConfig = await loadConfigFromFile(configPath);
     const serverConfig = { credentials: fileConfig.credentials, config: fileConfig.dbConfig };
     const driver = createDriver(serverConfig.credentials);
-    const mcpServer = createMcpServer(driver, serverConfig);
 
-    const { server: httpServer, transport } = createHttpServer({
+    const { server: httpServer } = createHttpServer({
       port: fileConfig.server.port,
       apiKey: fileConfig.server.api_key,
+      createMcpServer: () => createMcpServer(driver, serverConfig),
     });
-
-    mcpServer.connect(transport);
 
     const port = fileConfig.server.port;
     httpServer.listen(port, () => {

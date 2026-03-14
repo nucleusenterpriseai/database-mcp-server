@@ -1,11 +1,12 @@
 /**
- * HTTP Server Tests (Task 1.4)
+ * HTTP Server Tests
  *
- * Tests for the HTTP server that wraps StreamableHTTPServerTransport.
- * Verifies health check, auth middleware, and MCP protocol handling.
+ * Tests for the HTTP server with per-session MCP transport management.
+ * Verifies health check, auth middleware, MCP protocol handling,
+ * and multi-session support.
  */
 
-import { describe, it, expect, afterAll, afterEach, beforeAll } from 'vitest';
+import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import http from 'node:http';
 import https from 'node:https';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -25,12 +26,9 @@ describe('HTTP Server', () => {
     const result = createHttpServer({
       port: 0,
       apiKey: API_KEY,
+      createMcpServer: () => new McpServer({ name: 'test-db', version: '0.0.1' }),
     });
     server = result.server;
-
-    // Connect a minimal MCP server so initialize works
-    const mcpServer = new McpServer({ name: 'test-db', version: '0.0.1' });
-    mcpServer.connect(result.transport);
 
     await new Promise<void>((resolve) => {
       server.listen(0, '127.0.0.1', () => resolve());
@@ -52,6 +50,19 @@ describe('HTTP Server', () => {
     return { status: res.status, body, headers: res.headers };
   }
 
+  function initPayload() {
+    return JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-03-26',
+        capabilities: {},
+        clientInfo: { name: 'test', version: '1.0' },
+      },
+    });
+  }
+
   // Health check
 
   it('GET /health should return 200 without auth', async () => {
@@ -68,7 +79,7 @@ describe('HTTP Server', () => {
     const { status } = await fetchJson('/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }),
+      body: initPayload(),
     });
     expect(status).toBe(401);
   });
@@ -80,7 +91,7 @@ describe('HTTP Server', () => {
         'Content-Type': 'application/json',
         Authorization: 'Bearer wrong-key',
       },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }),
+      body: initPayload(),
     });
     expect(status).toBe(403);
   });
@@ -93,16 +104,7 @@ describe('HTTP Server', () => {
         Authorization: `Bearer ${API_KEY}`,
         Accept: 'application/json, text/event-stream',
       },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'initialize',
-        params: {
-          protocolVersion: '2025-03-26',
-          capabilities: {},
-          clientInfo: { name: 'test', version: '1.0' },
-        },
-      }),
+      body: initPayload(),
     });
     expect(status).toBe(200);
 
@@ -119,6 +121,55 @@ describe('HTTP Server', () => {
       expect(parsed.result).toBeDefined();
       expect(parsed.result.serverInfo).toBeDefined();
     }
+  });
+
+  // Multi-session support
+
+  it('should support multiple concurrent client sessions', async () => {
+    // Session 1
+    const res1 = await fetchJson('/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+        Accept: 'application/json, text/event-stream',
+      },
+      body: initPayload(),
+    });
+    expect(res1.status).toBe(200);
+
+    // Session 2 — should also succeed (not "Server already initialized")
+    const res2 = await fetchJson('/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+        Accept: 'application/json, text/event-stream',
+      },
+      body: initPayload(),
+    });
+    expect(res2.status).toBe(200);
+
+    // Both should have different session IDs
+    const sid1 = res1.headers.get('mcp-session-id');
+    const sid2 = res2.headers.get('mcp-session-id');
+    expect(sid1).toBeDefined();
+    expect(sid2).toBeDefined();
+    expect(sid1).not.toBe(sid2);
+  });
+
+  it('should return 404 for unknown session ID', async () => {
+    const { status } = await fetchJson('/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+        Accept: 'application/json, text/event-stream',
+        'Mcp-Session-Id': 'non-existent-session-id',
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }),
+    });
+    expect(status).toBe(404);
   });
 
   it('GET /unknown should return 404', async () => {
@@ -149,11 +200,9 @@ describe('HTTP Server with TLS', () => {
       port: 0,
       apiKey: API_KEY,
       tls: { cert: certPath, key: keyPath },
+      createMcpServer: () => new McpServer({ name: 'test-db-tls', version: '0.0.1' }),
     });
     tlsServer = result.server as https.Server;
-
-    const mcpServer = new McpServer({ name: 'test-db-tls', version: '0.0.1' });
-    mcpServer.connect(result.transport);
 
     await new Promise<void>((resolve) => {
       tlsServer.listen(0, '127.0.0.1', () => resolve());
