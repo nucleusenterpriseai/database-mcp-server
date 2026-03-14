@@ -1,7 +1,12 @@
 /**
  * HTTP Server for MCP Database Server
  *
- * Wraps StreamableHTTPServerTransport with API key auth and health check.
+ * Per-session transport architecture following the official MCP SDK pattern:
+ * - Each client initialization creates a new transport + McpServer pair
+ * - Sessions tracked in a Map keyed by Mcp-Session-Id
+ * - DELETE properly removes sessions from the map
+ * - Database driver (expensive) is shared; MCP layer (cheap) is per-session
+ *
  * Uses Node.js built-in http module — no Express dependency needed.
  */
 
@@ -10,12 +15,14 @@ import https from 'node:https';
 import * as fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { createApiKeyMiddleware } from './auth.js';
 import { SERVER_VERSION } from './config.js';
 
 export interface HttpServerOptions {
   port: number;
   apiKey: string;
+  createMcpServer: () => McpServer;
 }
 
 export interface TlsHttpServerOptions extends HttpServerOptions {
@@ -27,11 +34,57 @@ export interface TlsHttpServerOptions extends HttpServerOptions {
 
 export interface HttpServerResult {
   server: http.Server | https.Server;
-  transport: StreamableHTTPServerTransport;
 }
 
 /**
- * Create an HTTP server with health check and MCP transport.
+ * Handle an MCP request with per-session transport management.
+ *
+ * - Requests without Mcp-Session-Id create a new transport + MCP server.
+ * - Requests with Mcp-Session-Id are routed to the existing transport.
+ * - DELETE removes the session from the map.
+ */
+function createMcpRequestHandler(
+  sessions: Map<string, StreamableHTTPServerTransport>,
+  createMcpServer: () => McpServer,
+) {
+  return async (req: http.IncomingMessage, res: http.ServerResponse) => {
+    const sessionId = req.headers['mcp-session-id'] as string | undefined;
+
+    // Route to existing session
+    if (sessionId && sessions.has(sessionId)) {
+      const transport = sessions.get(sessionId)!;
+      await transport.handleRequest(req, res);
+      return;
+    }
+
+    // Reject non-initialization requests with unknown/expired session ID
+    if (sessionId) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Session not found' }));
+      return;
+    }
+
+    // New session — create transport + MCP server
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (sid) => {
+        sessions.set(sid, transport);
+      },
+    });
+
+    transport.onclose = () => {
+      const sid = transport.sessionId;
+      if (sid) sessions.delete(sid);
+    };
+
+    const mcpServer = createMcpServer();
+    await mcpServer.connect(transport);
+    await transport.handleRequest(req, res);
+  };
+}
+
+/**
+ * Create an HTTP server with health check and per-session MCP transport.
  *
  * - GET /health — no auth, returns { status: 'ok', version }
  * - POST /mcp — requires Bearer auth, MCP JSON-RPC endpoint
@@ -39,14 +92,12 @@ export interface HttpServerResult {
  * - DELETE /mcp — requires Bearer auth, session termination
  * - Everything else — 404
  *
- * The returned transport must be connected to an McpServer via server.connect(transport).
+ * Supports multiple concurrent client sessions.
  */
 export function createHttpServer(options: HttpServerOptions): HttpServerResult {
   const authMiddleware = createApiKeyMiddleware(options.apiKey);
-
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
-  });
+  const sessions = new Map<string, StreamableHTTPServerTransport>();
+  const handleMcpRequest = createMcpRequestHandler(sessions, options.createMcpServer);
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
@@ -62,7 +113,7 @@ export function createHttpServer(options: HttpServerOptions): HttpServerResult {
     // MCP endpoint — auth required
     if (pathname === '/mcp') {
       authMiddleware(req, res, () => {
-        transport.handleRequest(req, res);
+        handleMcpRequest(req, res);
       });
       return;
     }
@@ -72,19 +123,18 @@ export function createHttpServer(options: HttpServerOptions): HttpServerResult {
     res.end(JSON.stringify({ error: 'Not found' }));
   });
 
-  return { server, transport };
+  return { server };
 }
 
 /**
  * Create an HTTPS server with TLS support.
  * Same as createHttpServer but wraps in TLS using provided cert/key paths.
+ * Supports multiple concurrent client sessions.
  */
 export function createTlsHttpServer(options: TlsHttpServerOptions): HttpServerResult {
   const authMiddleware = createApiKeyMiddleware(options.apiKey);
-
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
-  });
+  const sessions = new Map<string, StreamableHTTPServerTransport>();
+  const handleMcpRequest = createMcpRequestHandler(sessions, options.createMcpServer);
 
   const requestHandler = (req: http.IncomingMessage, res: http.ServerResponse) => {
     const url = new URL(req.url ?? '/', `https://${req.headers.host ?? 'localhost'}`);
@@ -98,7 +148,7 @@ export function createTlsHttpServer(options: TlsHttpServerOptions): HttpServerRe
 
     if (pathname === '/mcp') {
       authMiddleware(req, res, () => {
-        transport.handleRequest(req, res);
+        handleMcpRequest(req, res);
       });
       return;
     }
@@ -115,5 +165,5 @@ export function createTlsHttpServer(options: TlsHttpServerOptions): HttpServerRe
     requestHandler,
   );
 
-  return { server, transport };
+  return { server };
 }
